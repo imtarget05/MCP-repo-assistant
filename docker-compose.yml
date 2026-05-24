@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - QDRANT_URL=http://qdrant:6333
+      - MCP_SERVER_PATH=/app/src/mcp_server/server.py
+    depends_on:
+      - qdrant
+    volumes:
+      - .:/app
+    networks:
+      - assistant-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - assistant-network
+
+networks:
+  assistant-network:
+    driver: bridge
+
+volumes:
+  qdrant_storage:

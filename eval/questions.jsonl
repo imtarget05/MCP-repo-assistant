@@ -1,0 +1,3 @@
+{"question": "Service nào xử lý authentication?", "expected_file": "auth-service/README.md"}
+{"question": "Repo này deploy bằng cách nào?", "expected_file": "k8s/deployment.yaml"}
+{"question": "Có lỗi security nào trong Dockerfile không?", "expected_behavior": "detect root user or missing healthcheck"}

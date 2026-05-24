@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Repo Assistant - Enterprise Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+    <!-- Background Gradients -->
+    <div class="bg-gradient bg-gradient-1"></div>
+    <div class="bg-gradient bg-gradient-2"></div>
+    <div class="bg-gradient bg-gradient-3"></div>
+
+    <div class="app-container">
+        <!-- Top Navigation Header -->
+        <header class="app-header">
+            <div class="header-logo">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-microchip-assets"></i>
+                </div>
+                <div class="logo-text">
+                    <h1>MCP Repo Assistant</h1>
+                    <span class="badge badge-premium">v2.1.0 Enterprise</span>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-indicator">
+                    <span class="status-dot online" id="connection-status-dot"></span>
+                    <span class="status-text" id="connection-status-text">FastAPI Server Connected</span>
+                </div>
+                <div class="divider"></div>
+                <button id="theme-toggle-btn" class="icon-btn" title="Chuyển chế độ giao diện">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Sidebar: Control Center -->
+            <section class="panel control-panel" aria-label="Control Center">
+                <div class="panel-header">
+                    <i class="fa-solid fa-sliders"></i>
+                    <h2>Bảng Điều Khiển</h2>
+                </div>
+                
+                <div class="panel-content">
+                    <!-- Repository Configuration Card -->
+                    <div class="card bg-blur">
+                        <h3><i class="fa-solid fa-folder-open"></i> Cấu hình Repository</h3>
+                        <div class="form-group">
+                            <label for="repo-path-input">Đường dẫn thư mục dự án (Local Path)</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-laptop-code"></i>
+                                <input type="text" id="repo-path-input" placeholder="Ví dụ: /Users/username/my-project" value="">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="collection-input">Collection Name (Qdrant Database)</label>
+                            <div class="input-with-icon">
+                                <i class="fa-solid fa-database"></i>
+                                <input type="text" id="collection-input" value="repo_docs">
+                            </div>
+                        </div>
+                        <button id="ingest-btn" class="btn btn-primary btn-glow w-full">
+                            <i class="fa-solid fa-bolt"></i> Nạp & Index Repository
+                        </button>
+                    </div>
+
+                    <!-- Repository Metadata Card -->
+                    <div class="card bg-blur" id="repo-metadata-card">
+                        <h3><i class="fa-solid fa-circle-info"></i> Thông tin Repo</h3>
+                        <div class="repo-meta-list">
+                            <div class="meta-item">
+                                <span class="meta-label">Trạng thái:</span>
+                                <span id="repo-status-val" class="status-pill status-gray">Chờ nạp...</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Tài liệu đã index:</span>
+                                <span id="repo-docs-count" class="meta-value">-</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Path hiện tại:</span>
+                                <span id="repo-active-path" class="meta-value truncate-path" title="Chưa nạp">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MCP Server Specs -->
+                    <div class="card bg-blur">
+                        <h3><i class="fa-solid fa-network-wired"></i> MCP GitHub Tools</h3>
+                        <ul class="mcp-tools-list">
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>get_repository_info</code></li>
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>search_repo</code></li>
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>read_file</code></li>
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>summarize_architecture</code></li>
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>review_pull_request</code></li>
+                            <li><i class="fa-solid fa-circle-check text-success"></i> <code>create_github_issue</code></li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Center Column: Sleek Chat Hub -->
+            <section class="panel chat-panel" aria-label="Interactive AI Chat">
+                <div class="panel-header chat-header">
+                    <div class="header-left">
+                        <i class="fa-solid fa-comments"></i>
+                        <h2>Trợ Lý Phân Tích Code</h2>
+                    </div>
+                    <div class="header-right">
+                        <button id="clear-chat-btn" class="btn btn-secondary btn-sm" title="Xóa lịch sử chat">
+                            <i class="fa-solid fa-trash-can"></i> Xóa Chat
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Chat Messages Screen -->
+                <div class="chat-screen" id="chat-messages-container">
+                    <div class="message system-message">
+                        <div class="avatar">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <div class="message-content">
+                            <p>Xin chào! Tôi là **MCP Repo Assistant**. Tôi được trang bị khả năng RAG tìm kiếm ngữ nghĩa nâng cao và tích hợp **Model Context Protocol (MCP)** để làm việc trực tiếp với mã nguồn của bạn.</p>
+                            <p>Hãy nạp repository của bạn ở cột bên trái và bắt đầu hỏi đáp hoặc chạy các tác vụ nâng cao như phân tích kiến trúc, review PR, phát hiện lỗi!</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Action Prompt Chips -->
+                <div class="quick-prompts-container">
+                    <button class="prompt-chip" data-prompt="Summarize the overall architecture of this repository and explain key modules.">
+                        <i class="fa-solid fa-sitemap"></i> Tóm tắt kiến trúc
+                    </button>
+                    <button class="prompt-chip" data-prompt="Review the latest code additions and check for potential bugs or design bottlenecks.">
+                        <i class="fa-solid fa-bug"></i> Review code lỗi
+                    </button>
+                    <button class="prompt-chip" data-prompt="Find all FastAPI routes/endpoints defined in this codebase and explain their inputs/outputs.">
+                        <i class="fa-solid fa-link"></i> Tìm các FastAPI Endpoints
+                    </button>
+                </div>
+
+                <!-- Chat Input Section -->
+                <div class="chat-input-area">
+                    <div class="input-wrapper">
+                        <textarea id="chat-input-textarea" placeholder="Nhập câu hỏi của bạn về repository (ví dụ: 'Hàm xử lý RAG nằm ở file nào và hoạt động ra sao?')..." rows="1"></textarea>
+                        <button id="send-chat-btn" class="send-btn" title="Gửi tin nhắn">
+                            <i class="fa-solid fa-paper-plane"></i>
+                        </button>
+                    </div>
+                    <div class="input-footer">
+                        <span><i class="fa-solid fa-shield-halved"></i> Bảo mật cục bộ & Stream SSE</span>
+                        <div class="input-controls">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="reindex-toggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="toggle-label" title="Tự động đồng bộ index trước khi chat">Auto-sync Index</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Sidebar: Live LangGraph Tracer -->
+            <section class="panel graph-panel" aria-label="LangGraph Visualizer">
+                <div class="panel-header">
+                    <i class="fa-solid fa-chart-network"></i>
+                    <h2>LangGraph Visualizer</h2>
+                </div>
+
+                <div class="panel-content graph-content">
+                    <!-- Live Graph Canvas Card -->
+                    <div class="card bg-blur graph-visualizer-card">
+                        <h3><i class="fa-solid fa-route"></i> Tiến Trình Thực Thi Đồ Thị</h3>
+                        <div class="langgraph-flow">
+                            <!-- Input Node -->
+                            <div class="node-item" id="node-start">
+                                <div class="node-circle start-node">
+                                    <i class="fa-solid fa-circle-play"></i>
+                                </div>
+                                <span class="node-name">Bắt đầu</span>
+                            </div>
+
+                            <div class="flow-arrow" id="arrow-start-agent">
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </div>
+
+                            <!-- Agent Node -->
+                            <div class="node-item" id="node-agent">
+                                <div class="node-circle normal-node">
+                                    <i class="fa-solid fa-brain"></i>
+                                </div>
+                                <span class="node-name">Agent (LLM Router)</span>
+                            </div>
+
+                            <!-- Bidirectional Tool/Verify flow wrapper -->
+                            <div class="flow-fork">
+                                <div class="flow-path left-path">
+                                    <div class="flow-arrow-side arrow-down" id="arrow-agent-tools">
+                                        <i class="fa-solid fa-chevron-down"></i>
+                                        <span class="path-label">Tool Calls</span>
+                                    </div>
+                                    
+                                    <!-- Tools Node -->
+                                    <div class="node-item" id="node-tools">
+                                        <div class="node-circle tool-node">
+                                            <i class="fa-solid fa-screwdriver-wrench"></i>
+                                        </div>
+                                        <span class="node-name">MCP Tools Execution</span>
+                                    </div>
+
+                                    <div class="flow-arrow-side arrow-up" id="arrow-tools-agent">
+                                        <i class="fa-solid fa-chevron-up"></i>
+                                    </div>
+                                </div>
+
+                                <div class="flow-path right-path">
+                                    <div class="flow-arrow-side arrow-down" id="arrow-agent-verifier">
+                                        <i class="fa-solid fa-chevron-down"></i>
+                                        <span class="path-label">Final Answer</span>
+                                    </div>
+                                    
+                                    <!-- Verifier Node -->
+                                    <div class="node-item" id="node-verifier">
+                                        <div class="node-circle verifier-node">
+                                            <i class="fa-solid fa-shield-heart"></i>
+                                        </div>
+                                        <span class="node-name">Verifier (Self-Check)</span>
+                                    </div>
+
+                                    <div class="flow-arrow-side arrow-up-feedback" id="arrow-verifier-agent">
+                                        <i class="fa-solid fa-rotate-left"></i>
+                                        <span class="feedback-label">Feedback (Retry)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flow-arrow" id="arrow-verifier-end">
+                                <i class="fa-solid fa-chevron-down"></i>
+                            </div>
+
+                            <!-- End Node -->
+                            <div class="node-item" id="node-end">
+                                <div class="node-circle end-node">
+                                    <i class="fa-solid fa-circle-stop"></i>
+                                </div>
+                                <span class="node-name">Kết thúc</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Execution Logs -->
+                    <div class="card bg-blur logs-card">
+                        <h3><i class="fa-solid fa-terminal"></i> Traces & Logs Thời Gian Thực</h3>
+                        <div class="logs-container" id="live-traces-log">
+                            <div class="log-line log-system">Hệ thống đang hoạt động và chờ yêu cầu...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Overlay Loader for Ingestion -->
+    <div class="overlay" id="global-loader-overlay">
+        <div class="loader-content">
+            <div class="spinner-premium"></div>
+            <h2>Đang Nạp & Xử Lý Repository</h2>
+            <p>Hệ thống đang đọc cấu trúc file, phân tách văn bản bằng Language-Aware Splitter và lưu vào Vector Database Qdrant...</p>
+            <div id="loader-progress-text">Vui lòng chờ trong giây lát...</div>
+        </div>
+    </div>
+
+    <!-- Script imports -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

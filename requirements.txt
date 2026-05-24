@@ -1,0 +1,14 @@
+mcp
+fastmcp
+langgraph
+langchain
+langchain-openai
+langchain-anthropic
+qdrant-client
+fastapi
+uvicorn
+PyGithub
+langfuse
+ragas
+python-dotenv
+pandas
