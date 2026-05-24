@@ -76,7 +76,9 @@ async def run_eval():
     print(result)
     
     # Save results
-    result.to_pandas().to_csv(PROJECT_ROOT / "eval" / "results.csv", index=False)
+    from typing import Any
+    result_any: Any = result
+    result_any.to_pandas().to_csv(PROJECT_ROOT / "eval" / "results.csv", index=False)
 
 if __name__ == "__main__":
     asyncio.run(run_eval())

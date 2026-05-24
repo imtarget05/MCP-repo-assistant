@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 TEXT_FILE_NAMES = {"Dockerfile", "Makefile", "README", "README.md"}
 TEXT_EXTENSIONS = {
@@ -49,10 +49,10 @@ def load_repository_documents(repo_path: str | Path) -> list[Document]:
     
     # Initialize splitters for different languages
     python_splitter = RecursiveCharacterTextSplitter.from_language(
-        language="python", chunk_size=2000, chunk_overlap=200
+        language=Language.PYTHON, chunk_size=2000, chunk_overlap=200
     )
     md_splitter = RecursiveCharacterTextSplitter.from_language(
-        language="markdown", chunk_size=2000, chunk_overlap=200
+        language=Language.MARKDOWN, chunk_size=2000, chunk_overlap=200
     )
     default_splitter = RecursiveCharacterTextSplitter(
         chunk_size=2000, chunk_overlap=200

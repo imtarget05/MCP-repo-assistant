@@ -60,7 +60,7 @@ async def search_repo(repo_name: str, query: str):
             results = g.search_code(f"repo:{repo_name} {query}")
             items = []
             for file in results[:10]:
-                items.append({"path": file.path, "url": file.html_url})
+                items.append({"path": getattr(file, "path", None), "url": getattr(file, "html_url", None)})
             return items
             
         return await asyncio.to_thread(do_search)
@@ -78,7 +78,10 @@ async def read_file(repo_name: str, file_path: str):
     try:
         repo = await asyncio.to_thread(g.get_repo, repo_name)
         content = await asyncio.to_thread(repo.get_contents, file_path)
-        return content.decoded_content.decode("utf-8")
+        if isinstance(content, list):
+            return "Error: Path is a directory, not a file."
+        decoded = getattr(content, "decoded_content", b"")
+        return decoded.decode("utf-8")
     except Exception as e:
         return f"Error reading file: {str(e)}"
 
@@ -92,7 +95,9 @@ async def summarize_architecture(repo_name: str):
     try:
         repo = await asyncio.to_thread(g.get_repo, repo_name)
         contents = await asyncio.to_thread(repo.get_contents, "")
-        structure = [c.path for c in contents]
+        if not isinstance(contents, list):
+            contents = [contents]
+        structure = [getattr(c, "path", "") for c in contents]
         return f"Repository '{repo_name}' top-level structure: {', '.join(structure)}"
     except Exception as e:
         return f"Error summarizing architecture: {str(e)}"

@@ -1,11 +1,11 @@
 import os
 from functools import lru_cache
-from typing import Annotated, List, TypedDict
+from typing import Annotated, Sequence, TypedDict
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, END, add_messages
 from langgraph.prebuilt import ToolNode
 
 from src.agent.tools import repo_assistant_tools
@@ -14,7 +14,7 @@ load_dotenv()
 
 # Define the state for the graph
 class AgentState(TypedDict):
-    messages: Annotated[List[BaseMessage], lambda x, y: x + y]
+    messages: Annotated[list[BaseMessage], add_messages]
     reasoning: str
     is_valid: bool
     retry_count: int
@@ -22,7 +22,7 @@ class AgentState(TypedDict):
 def get_langfuse_callback():
     if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
         try:
-            from langfuse.callback import CallbackHandler
+            from langfuse.callback import CallbackHandler # type: ignore
             return [CallbackHandler(
                 public_key=os.getenv("LANGFUSE_PUBLIC_KEY"),
                 secret_key=os.getenv("LANGFUSE_SECRET_KEY"),
@@ -62,6 +62,16 @@ def build_app(llm=None, tools=None):
             }
             
         content = last_message.content
+        if isinstance(content, list):
+            text_content = ""
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_content += block.get("text", "")
+                elif isinstance(block, str):
+                    text_content += block
+            content = text_content
+        elif not isinstance(content, str):
+            content = str(content)
         
         # Check 1: Too short
         if len(content.strip()) < 10:
@@ -96,7 +106,7 @@ def build_app(llm=None, tools=None):
         messages = state["messages"]
         last_message = messages[-1]
         
-        if last_message.tool_calls:
+        if getattr(last_message, "tool_calls", None):
             return "tools"
             
         return "verifier"
@@ -141,9 +151,11 @@ def get_app():
 async def invoke_agent(user_input: str, app_instance=None):
     graph = app_instance or get_app()
     callbacks = get_langfuse_callback()
-    config = {"callbacks": callbacks} if callbacks else {}
+    from typing import Any
+    config: Any = {"callbacks": callbacks} if callbacks else None
+    inputs: AgentState = {"messages": [HumanMessage(content=user_input)], "is_valid": False, "retry_count": 0, "reasoning": ""}
     result = await graph.ainvoke(
-        {"messages": [HumanMessage(content=user_input)], "is_valid": False, "retry_count": 0},
+        inputs,
         config=config
     )
     final_message = result["messages"][-1]
@@ -166,9 +178,10 @@ async def main():
             if user_input.lower() in ["exit", "quit"]:
                 break
                 
-            inputs = {"messages": [HumanMessage(content=user_input)], "is_valid": False, "retry_count": 0}
+            inputs: AgentState = {"messages": [HumanMessage(content=user_input)], "is_valid": False, "retry_count": 0, "reasoning": ""}
             callbacks = get_langfuse_callback()
-            config = {"callbacks": callbacks} if callbacks else {}
+            from typing import Any
+            config: Any = {"callbacks": callbacks} if callbacks else None
             
             async for output in app.astream(inputs, stream_mode="updates", config=config):
                 for node, data in output.items():

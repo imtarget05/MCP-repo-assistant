@@ -39,7 +39,9 @@ class RepoRetriever:
         if self.client.collection_exists(collection_name=self.collection_name):
             collection_info = self.client.get_collection(collection_name=self.collection_name)
             # If sparse vectors config is missing or empty, migrate the collection
-            if not collection_info.config.sparse_vectors_config:
+            from typing import Any
+            config_any: Any = collection_info.config
+            if not getattr(config_any, "sparse_vectors_config", None):
                 self.client.delete_collection(collection_name=self.collection_name)
         
         self.vector_store = QdrantVectorStore(
@@ -47,7 +49,7 @@ class RepoRetriever:
             collection_name=self.collection_name,
             embedding=self.embeddings,
             sparse_embedding=self.sparse_embeddings,
-            retrieval_mode=RetrievalMode.Hybrid,
+            retrieval_mode=RetrievalMode.HYBRID,
         )
 
     def index_repo(self, documents: list[Document]):

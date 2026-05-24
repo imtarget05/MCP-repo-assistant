@@ -170,7 +170,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
             await asyncio.to_thread(ingest_repository, repo_path, request.collection_name)
         documents = await asyncio.to_thread(retriever.search, request.question, request.top_k)
         hits = _to_search_hits(documents)
-        answer = await invoke_agent(_build_context_prompt(request.question, hits))
+        answer_raw = await invoke_agent(_build_context_prompt(request.question, hits))
+        answer = str(answer_raw) if not isinstance(answer_raw, str) else answer_raw
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Chat failed: {exc}") from exc
 
@@ -185,9 +186,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
 async def _stream_agent_updates(message: str):
     """Stream updates from the LangGraph agent in SSE format."""
     agent = get_app()
-    inputs = {"messages": [HumanMessage(content=message)], "is_valid": False, "retry_count": 0}
+    from src.agent.assistant import AgentState
+    inputs: AgentState = {"messages": [HumanMessage(content=message)], "is_valid": False, "retry_count": 0, "reasoning": ""}
     callbacks = get_langfuse_callback()
-    config = {"callbacks": callbacks} if callbacks else {}
+    from typing import Any
+    config: Any = {"callbacks": callbacks} if callbacks else None
 
     try:
         async for output in agent.astream(inputs, stream_mode="updates", config=config):
