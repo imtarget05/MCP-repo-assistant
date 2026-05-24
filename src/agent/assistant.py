@@ -116,7 +116,7 @@ def build_app(llm=None, tools=None):
             return END
         return "agent"
 
-    workflow = StateGraph(AgentState)
+    workflow = StateGraph(state_schema=AgentState)
     workflow.add_node("agent", tool_calling_agent)
     workflow.add_node("tools", ToolNode(active_tools))
     workflow.add_node("verifier", verify_response)
