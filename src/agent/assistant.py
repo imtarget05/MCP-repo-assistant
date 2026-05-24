@@ -1,6 +1,8 @@
 import os
 from functools import lru_cache
-from typing import Annotated, Sequence, TypedDict
+from typing import Annotated, Sequence
+from typing_extensions import TypedDict
+
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -116,7 +118,7 @@ def build_app(llm=None, tools=None):
             return END
         return "agent"
 
-    workflow = StateGraph(state_schema=AgentState)
+    workflow = StateGraph(AgentState)  # type: ignore[arg-type]
     workflow.add_node("agent", tool_calling_agent)
     workflow.add_node("tools", ToolNode(active_tools))
     workflow.add_node("verifier", verify_response)
