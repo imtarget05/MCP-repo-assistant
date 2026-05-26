@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const clearChatBtn = document.getElementById("clear-chat-btn");
     const themeToggleBtn = document.getElementById("theme-toggle-btn");
     const reindexToggle = document.getElementById("reindex-toggle");
+    const orchestratorToggle = document.getElementById("orchestrator-toggle");
     const liveTracesLog = document.getElementById("live-traces-log");
     const globalLoaderOverlay = document.getElementById("global-loader-overlay");
 
@@ -152,6 +153,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!question || isChatting) return;
 
+        if (orchestratorToggle && orchestratorToggle.checked) {
+            isChatting = true;
+            chatInputTextarea.value = "";
+            chatInputTextarea.style.height = "auto";
+            
+            // Append User Message to UI
+            appendMessage("user", question);
+            await sendParallelOrchestratorMessage(question, repoPath, collection);
+            return;
+        }
+
         isChatting = true;
         chatInputTextarea.value = "";
         chatInputTextarea.style.height = "auto";
@@ -237,6 +249,250 @@ document.addEventListener("DOMContentLoaded", () => {
         } finally {
             isChatting = false;
         }
+    }
+
+    // Parallel DAG Orchestrator Streaming & Rendering Logic
+    async function sendParallelOrchestratorMessage(question, repoPath, collection) {
+        logEvent("Kích hoạt Parallel Agent Task Orchestrator...", "system");
+        
+        const aiMessageEl = appendMessage("system", `
+            <div class="orchestrator-status-header" style="font-weight: 700; color: var(--accent-purple); margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-gears fa-spin" style="color: var(--accent-cyan);"></i> <span>PARALLEL DAG ORCHESTRATOR</span>
+            </div>
+            <p id="orchestrator-status-text" style="font-size: 13.5px; opacity: 0.9;">🧩 Đang phân tích yêu cầu để tự động chia tách công việc...</p>
+            <div id="dag-container-el" style="display: none; margin: 12px 0;"></div>
+            <div id="orchestrator-answer" style="margin-top: 16px; display: none; padding-top: 14px; border-top: 1px dashed rgba(255,255,255,0.1);"></div>
+        `);
+        
+        const statusTextEl = aiMessageEl.querySelector("#orchestrator-status-text");
+        const dagContainerEl = aiMessageEl.querySelector("#dag-container-el");
+        const answerEl = aiMessageEl.querySelector("#orchestrator-answer");
+        
+        let subtasks = [];
+        let waves = [];
+        let taskStates = {};
+
+        // Highlight Start node in Graph
+        resetGraphHighlight();
+        highlightNode("start", "active-start");
+        highlightArrow("startAgent");
+
+        try {
+            const response = await fetch("/api/tasks/execute-parallel/stream", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_request: question,
+                    repo_path: repoPath || null,
+                    collection_name: collection,
+                    max_concurrent_tasks: 5,
+                    strategy: "BALANCED",
+                    timeout_per_task: 30.0
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || "Không thể khởi chạy Orchestrator.");
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                const chunkText = decoder.decode(value);
+                const lines = chunkText.split("\n");
+
+                for (const line of lines) {
+                    if (line.startsWith("data: ")) {
+                        const rawData = line.substring(6).trim();
+                        try {
+                            const eventData = JSON.parse(rawData);
+                            const event = eventData.event;
+                            const data = eventData.data;
+
+                            if (event === "decomposing") {
+                                statusTextEl.innerHTML = "🧩 Đang phân tách yêu cầu thành các tác vụ con độc lập...";
+                                logEvent("Đang phân tách yêu cầu phức tạp...", "node-agent");
+                                highlightNode("agent", "active-agent");
+                                highlightArrow("agentVerifier");
+                            } 
+                            else if (event === "decomposed") {
+                                subtasks = data.subtasks;
+                                waves = data.execution_waves;
+                                
+                                subtasks.forEach(t => {
+                                    taskStates[t.id] = {
+                                        name: t.name,
+                                        status: "PENDING"
+                                    };
+                                });
+                                
+                                statusTextEl.innerHTML = "⚡ Kế hoạch thực thi DAG đã sẵn sàng! Bắt đầu chạy song song...";
+                                logEvent(`Phân rã thành công thành ${subtasks.length} tác vụ con trong ${waves.length} waves chạy song song.`, "success");
+                                
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                                dagContainerEl.style.display = "block";
+                                
+                                highlightNode("verifier", "active-verifier");
+                                highlightArrow("verifierEnd");
+                            }
+                            else if (event === "wave_start") {
+                                const idx = data.wave_index;
+                                statusTextEl.innerHTML = `🌊 Wave ${idx + 1}/${waves.length}: Đang xử lý các tác vụ con chạy song song...`;
+                                logEvent(`🌊 Bắt đầu Wave ${idx + 1}/${waves.length}: [${data.tasks.join(', ')}]`, "system");
+                                
+                                data.tasks.forEach(tid => {
+                                    if (taskStates[tid]) taskStates[tid].status = "RUNNING";
+                                });
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                                
+                                highlightNode("agent", "active-agent");
+                                highlightArrow("agentTools");
+                                highlightNode("tools", "active-tools");
+                            }
+                            else if (event === "task_start") {
+                                const tid = data.task_id;
+                                logEvent(`🚀 Khởi chạy tác vụ: ${data.name}`, "node-agent");
+                                if (taskStates[tid]) taskStates[tid].status = "RUNNING";
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                            }
+                            else if (event === "task_complete") {
+                                const tid = data.task_id;
+                                logEvent(`✅ Tác vụ hoàn thành: ${tid}`, "success");
+                                if (taskStates[tid]) taskStates[tid].status = "COMPLETED";
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                            }
+                            else if (event === "task_skipped") {
+                                const tid = data.task_id;
+                                logEvent(`⚠️ Tác vụ bị bỏ qua: ${tid}`, "node-verifier");
+                                if (taskStates[tid]) taskStates[tid].status = "SKIPPED";
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                            }
+                            else if (event === "task_failed") {
+                                const tid = data.task_id;
+                                logEvent(`❌ Tác vụ thất bại nghiêm trọng: ${tid}`, "node-verifier");
+                                if (taskStates[tid]) taskStates[tid].status = "FAILED";
+                                renderDAG(dagContainerEl, subtasks, waves, taskStates);
+                            }
+                            else if (event === "wave_complete") {
+                                const idx = data.wave_index;
+                                logEvent(`🌊 Wave ${idx + 1} hoàn thành trong ${data.duration_seconds.toFixed(1)} giây.`, "success");
+                            }
+                            else if (event === "aggregating") {
+                                statusTextEl.innerHTML = "🧠 Đang tổng hợp toàn bộ kết quả của các tác vụ...";
+                                logEvent("Đang tổng hợp kết quả tổng quát...", "node-agent");
+                                highlightNode("verifier", "active-verifier");
+                                highlightArrow("verifierEnd");
+                            }
+                            else if (event === "complete") {
+                                statusTextEl.innerHTML = "🎉 Thực thi song song DAG hoàn tất thành công!";
+                                logEvent("Parallel DAG Orchestrator hoàn thành công việc!", "success");
+                                
+                                highlightNode("end", "active-start");
+                                
+                                // Render final answer
+                                answerEl.innerHTML = parseMarkdown(data.final_answer);
+                                answerEl.style.display = "block";
+                                
+                                // Append Metrics Dashboard
+                                appendMetricsDashboard(aiMessageEl, data.metrics);
+                            }
+                            else if (event === "error") {
+                                throw new Error(data);
+                            }
+                        } catch (e) {
+                            console.error("SSE parse error", e);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            logEvent(`Lỗi thực thi Orchestrator: ${error.message}`, "node-verifier");
+            statusTextEl.innerHTML = `<span style="color: var(--accent-pink);">❌ Thất bại: ${error.message}</span>`;
+            highlightNode("verifier", "active-verifier");
+        }
+    }
+
+    function renderDAG(container, subtasks, waves, states) {
+        let html = `
+            <div class="dag-container">
+                <div class="wave-title" style="font-weight: 800; font-size: 11px; margin-bottom: 12px; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-diagram-project"></i> <span>DIRECTED ACYCLIC GRAPH (DAG)</span>
+                </div>
+        `;
+        
+        waves.forEach((wave, wIdx) => {
+            html += `
+                <div class="wave-block">
+                    <div class="wave-title" style="font-size: 11px; font-weight: 700; color: var(--accent-purple); margin-bottom: 8px;">
+                        Wave ${wIdx + 1}
+                    </div>
+                    <div class="tasks-grid" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            `;
+            
+            wave.forEach(tid => {
+                const task = subtasks.find(t => t.id === tid);
+                const state = states[tid] || { status: "PENDING" };
+                let statusIcon = '<i class="fa-regular fa-circle status-pending"></i>';
+                
+                if (state.status === "RUNNING") {
+                    statusIcon = '<i class="fa-solid fa-spinner fa-spin status-running" style="color: var(--accent-cyan);"></i>';
+                } else if (state.status === "COMPLETED") {
+                    statusIcon = '<i class="fa-solid fa-circle-check status-completed" style="color: var(--accent-green);"></i>';
+                } else if (state.status === "SKIPPED") {
+                    statusIcon = '<i class="fa-solid fa-circle-exclamation status-skipped" style="color: var(--accent-orange);"></i>';
+                } else if (state.status === "FAILED") {
+                    statusIcon = '<i class="fa-solid fa-circle-xmark status-failed" style="color: var(--accent-pink);"></i>';
+                }
+                
+                html += `
+                    <div class="task-card" style="background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px 12px; display: flex; align-items: center; gap: 8px; min-width: 120px;" title="${escapeHtml(task.description)}">
+                        <div class="task-icon" style="font-size: 13px; display: flex; align-items: center; justify-content: center;">${statusIcon}</div>
+                        <div class="task-info">
+                            <div class="task-name-text" style="font-size: 11.5px; font-weight: 600; color: var(--text-primary);">${escapeHtml(task.name)}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+        container.innerHTML = html;
+    }
+
+    function appendMetricsDashboard(messageEl, metrics) {
+        const contentEl = messageEl.querySelector(".message-content");
+        const dashboardDiv = document.createElement("div");
+        dashboardDiv.className = "metrics-grid";
+        dashboardDiv.innerHTML = `
+            <div class="metric-card">
+                <div class="metric-value-text highlight">${metrics.speedup_factor}x</div>
+                <div class="metric-label-text">Tốc độ tăng</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value-text">${metrics.parallel_duration_seconds.toFixed(1)}s</div>
+                <div class="metric-label-text">Chạy song song</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value-text">${metrics.serial_duration_seconds.toFixed(1)}s</div>
+                <div class="metric-label-text">Chạy tuần tự</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value-text">${(metrics.success_rate * 100).toFixed(0)}%</div>
+                <div class="metric-label-text">Thành công</div>
+            </div>
+        `;
+        contentEl.appendChild(dashboardDiv);
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
     }
 
     // Handle Graph Highlight on incoming SSE events
