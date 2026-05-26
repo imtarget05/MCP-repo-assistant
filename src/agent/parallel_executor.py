@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
@@ -7,6 +8,8 @@ from pydantic import BaseModel
 from src.agent.prompts import get_prompt
 from src.agent.task_orchestrator import ExecutionPlan, SubTask
 from src.agent.assistant import get_default_llm
+
+logger = logging.getLogger("mcp.executor")
 
 
 class ExecutionStrategy(str, Enum):
@@ -61,7 +64,7 @@ class ParallelExecutor:
 
         # Thực thi lần lượt từng wave (các task trong một wave chạy song song)
         for wave_idx, wave in enumerate(execution_plan.execution_waves):
-            print(f"🌊 Bắt đầu thực thi Wave {wave_idx + 1}/{len(execution_plan.execution_waves)}: {wave}")
+            logger.info("Wave %d/%d started: %s", wave_idx + 1, len(execution_plan.execution_waves), wave)
             if status_callback:
                 await status_callback({
                     "event": "wave_start",
@@ -123,7 +126,7 @@ class ParallelExecutor:
         total_duration = time.time() - start_time
         
         # 1. Tổng hợp kết quả cuối cùng (Aggregation)
-        print("🧠 Đang tổng hợp kết quả của tất cả các tác vụ...")
+        logger.info("Aggregating results from all subtasks")
         if status_callback:
             await status_callback({
                 "event": "aggregating",
@@ -182,7 +185,7 @@ class ParallelExecutor:
         """Thực thi một task đơn lẻ có quản lý Semaphore, Timeout và cơ chế Retry tự động."""
         async with self.semaphore:
             task_statuses[task_id] = "RUNNING"
-            print(f"🚀 [Task {task_id}] Đang chạy: {subtask_def.name}...")
+            logger.info("[Task %s] Running: %s", task_id, subtask_def.name)
             if status_callback:
                 await status_callback({
                     "event": "task_start",
@@ -213,7 +216,7 @@ class ParallelExecutor:
 
             while current_attempt <= max_retries and not success:
                 if current_attempt > 0:
-                    print(f"🔄 [Task {task_id}] Đang thử lại (Retry {current_attempt}/{max_retries})...")
+                    logger.warning("[Task %s] Retry %d/%d", task_id, current_attempt, max_retries)
                     if status_callback:
                         await status_callback({
                             "event": "task_retry",
@@ -237,7 +240,7 @@ class ParallelExecutor:
                         task_outputs[task_id] = str(raw_result)
                         task_statuses[task_id] = "COMPLETED"
                         success = True
-                        print(f"✅ [Task {task_id}] Hoàn thành thành công!")
+                        logger.info("[Task %s] Completed successfully", task_id)
                         if status_callback:
                             await status_callback({
                                 "event": "task_complete",
@@ -249,7 +252,7 @@ class ParallelExecutor:
                 except Exception as e:
                     last_error = str(e)
                     current_attempt += 1
-                    print(f"❌ [Task {task_id}] Lỗi ở lượt thử {current_attempt}: {last_error}")
+                    logger.error("[Task %s] Error on attempt %d: %s", task_id, current_attempt, last_error)
 
                     if current_attempt <= max_retries:
                         # Gọi prompt sửa lỗi tự động để bổ sung chỉ dẫn cho lần retry kế tiếp
@@ -263,7 +266,7 @@ class ParallelExecutor:
                             recovery_resp = await self.llm.ainvoke(recovery_prompt)
                             recovery_prompt_instruction = recovery_resp.content if hasattr(recovery_resp, "content") else str(recovery_resp)
                         except Exception as inner_e:
-                            print(f"⚠️ Không thể tạo prompt phục hồi lỗi: {inner_e}")
+                            logger.warning("Cannot create recovery prompt: %s", inner_e)
                             recovery_prompt_instruction = f"Hãy chú ý tránh lỗi: {last_error}"
 
             if not success:
@@ -274,7 +277,7 @@ class ParallelExecutor:
                 if not subtask_def.critical and self.strategy in [ExecutionStrategy.SPEED_FIRST, ExecutionStrategy.BALANCED]:
                     task_outputs[task_id] = f"[Tác vụ bị bỏ qua do lỗi thực thi]: {last_error}"
                     task_statuses[task_id] = "SKIPPED"
-                    print(f"⚠️ [Task {task_id}] Thất bại nhưng được bỏ qua vì không phải là tác vụ quan trọng (critical).")
+                    logger.warning("[Task %s] Skipped (non-critical failure)", task_id)
                     if status_callback:
                         await status_callback({
                             "event": "task_skipped",
@@ -285,7 +288,7 @@ class ParallelExecutor:
                         })
                 else:
                     task_outputs[task_id] = f"[Thất bại nghiêm trọng]: {last_error}"
-                    print(f"🚨 [Task {task_id}] Thất bại nghiêm trọng!")
+                    logger.error("[Task %s] Critical failure!", task_id)
                     if status_callback:
                         await status_callback({
                             "event": "task_failed",

@@ -1,4 +1,5 @@
 import os
+import logging
 from functools import lru_cache
 from typing import Annotated, Sequence
 from typing_extensions import TypedDict
@@ -13,6 +14,8 @@ from langgraph.prebuilt import ToolNode
 from src.agent.tools import repo_assistant_tools
 
 load_dotenv()
+
+logger = logging.getLogger("mcp.assistant")
 
 # Define the state for the graph
 class AgentState(TypedDict):
@@ -31,7 +34,7 @@ def get_langfuse_callback():
                 host=os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
             )]
         except Exception as e:
-            print(f"⚠️ Failed to initialize Langfuse callback: {e}")
+            logger.warning("Failed to initialize Langfuse callback: %s", e)
     return []
 
 def get_default_llm():

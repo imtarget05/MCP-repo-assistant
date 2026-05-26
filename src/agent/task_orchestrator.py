@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from typing import Any, Dict, List, Set
 from pydantic import BaseModel, Field
@@ -6,6 +7,8 @@ from typing_extensions import Literal
 
 from src.agent.prompts import get_prompt
 from src.agent.assistant import get_default_llm
+
+logger = logging.getLogger("mcp.orchestrator")
 
 
 class SubTask(BaseModel):
@@ -86,7 +89,7 @@ class TaskDecompositionEngine:
             for dep in task.dependencies:
                 if dep not in subtask_map:
                     # Nếu dependency không tồn tại, tự động loại bỏ hoặc log warning
-                    print(f"⚠️ Cảnh báo: Tác vụ {task.id} phụ thuộc vào {dep} không tồn tại. Tự động xóa dependency này.")
+                    logger.warning("Task %s depends on non-existent task %s. Removing dependency.", task.id, dep)
                     task.dependencies.remove(dep)
 
         # 2. Xây dựng các wave thực thi (Topological Sort dựa trên độ sâu phụ thuộc)
