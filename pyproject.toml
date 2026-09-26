@@ -54,6 +54,7 @@ extraPaths = ["."]
 pythonVersion = "3.11"
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=src --cov-report=term-missing"
