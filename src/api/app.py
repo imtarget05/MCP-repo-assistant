@@ -8,25 +8,25 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel, Field
 
-from src.agent.assistant import get_app, invoke_agent, get_langfuse_callback
+from src.agent.assistant import get_app, get_langfuse_callback, invoke_agent
+from src.agent.parallel_executor import ExecutionStrategy, ParallelExecutor
+from src.agent.task_orchestrator import SubTask, TaskDecompositionEngine
+from src.api.logging_config import (
+    RequestIdMiddleware,
+    get_logger,
+    request_id_ctx,
+    setup_logging,
+)
 from src.rag.ingest import ingest_repository
 from src.rag.retriever import RepoRetriever
-from src.agent.task_orchestrator import TaskDecompositionEngine, SubTask
-from src.agent.parallel_executor import ParallelExecutor, ExecutionStrategy
-from src.api.logging_config import (
-    setup_logging,
-    get_logger,
-    RequestIdMiddleware,
-    request_id_ctx,
-)
 
 load_dotenv()
 
@@ -337,7 +337,9 @@ def metrics():
         "requests_by_endpoint": _metrics["requests_by_endpoint"],
         "errors_total": _metrics["errors_total"],
         "chat_latency_avg_seconds": avg_latency,
-        "chat_latency_p99_seconds": round(sorted(latencies)[int(len(latencies) * 0.99)] if latencies else 0, 4),
+        "chat_latency_p99_seconds": round(
+            sorted(latencies)[int(len(latencies) * 0.99)] if latencies else 0, 4
+        ),
         "uptime_seconds": round(time.time() - _STARTUP_TIME, 2),
     }
 
@@ -345,7 +347,9 @@ def metrics():
 # ---------------------------------------------------------------------------
 # RAG endpoints
 # ---------------------------------------------------------------------------
-@app.post("/ingest", response_model=IngestResponse, tags=["RAG"], dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/ingest", response_model=IngestResponse, tags=["RAG"], dependencies=[Depends(verify_api_key)]
+)
 async def ingest(request: IngestRequest) -> IngestResponse:
     repo_path = _resolve_repo_path(request.repo_path)
     logger.info("Starting repository ingestion", extra={"repo_path": repo_path})
@@ -368,7 +372,9 @@ async def ingest(request: IngestRequest) -> IngestResponse:
     )
 
 
-@app.post("/search", response_model=SearchResponse, tags=["RAG"], dependencies=[Depends(verify_api_key)])
+@app.post(
+    "/search", response_model=SearchResponse, tags=["RAG"], dependencies=[Depends(verify_api_key)]
+)
 async def search(request: SearchRequest) -> SearchResponse:
     repo_path = _resolve_repo_path(request.repo_path)
 
@@ -411,9 +417,11 @@ async def chat(request: ChatRequest) -> ChatResponse:
             hits = _to_search_hits(documents)
             answer_raw = await invoke_agent(_build_context_prompt(request.question, hits))
             answer = str(answer_raw) if not isinstance(answer_raw, str) else answer_raw
-    except asyncio.TimeoutError:
+    except TimeoutError as exc:
         logger.error("Chat request timed out after %ds", _REQUEST_TIMEOUT)
-        raise HTTPException(status_code=504, detail=f"Request timed out after {_REQUEST_TIMEOUT}s.")
+        raise HTTPException(
+            status_code=504, detail=f"Request timed out after {_REQUEST_TIMEOUT}s."
+        ) from exc
     except Exception as exc:
         logger.exception("Chat failed")
         raise HTTPException(status_code=500, detail=f"Chat failed: {exc}") from exc
@@ -430,7 +438,13 @@ async def _stream_agent_updates(message: str):
     """Stream updates from the LangGraph agent in SSE format."""
     agent = get_app()
     from src.agent.assistant import AgentState
-    inputs: AgentState = {"messages": [HumanMessage(content=message)], "is_valid": False, "retry_count": 0, "reasoning": ""}
+
+    inputs: AgentState = {
+        "messages": [HumanMessage(content=message)],
+        "is_valid": False,
+        "retry_count": 0,
+        "reasoning": "",
+    }
     callbacks = get_langfuse_callback()
     config: Any = {"callbacks": callbacks} if callbacks else None
 
@@ -559,7 +573,7 @@ async def execute_parallel(request: ParallelExecutionRequest):
         }
     except Exception as exc:
         logger.exception("Parallel Execution failed")
-        raise HTTPException(status_code=500, detail=f"Parallel Execution failed: {exc}")
+        raise HTTPException(status_code=500, detail=f"Parallel Execution failed: {exc}") from exc
 
 
 @app.post(
@@ -632,7 +646,7 @@ async def execute_parallel_stream(request: ParallelExecutionRequest):
                     msg = await asyncio.wait_for(queue.get(), timeout=0.1)
                     yield f"data: {json.dumps(msg)}\n\n"
                     queue.task_done()
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
 
             if workflow_task.exception():

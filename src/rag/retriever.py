@@ -2,11 +2,10 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from langchain_openai import OpenAIEmbeddings
-from langchain_qdrant import QdrantVectorStore, FastEmbedSparse, RetrievalMode
-from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams
 from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
+from qdrant_client import QdrantClient
 
 load_dotenv()
 
@@ -23,27 +22,30 @@ class RepoRetriever:
         self.collection_name = collection_name
         self.embeddings = OpenAIEmbeddings()
         self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
-        
+
         qdrant_url = os.getenv("QDRANT_URL")
         if qdrant_url:
             # Connect to remote Qdrant server (e.g., in Docker Compose)
             self.client = QdrantClient(url=qdrant_url, api_key=os.getenv("QDRANT_API_KEY"))
         else:
             # Local file-based storage
-            self.storage_path = Path(storage_path) if storage_path is not None else _default_storage_path()
+            self.storage_path = (
+                Path(storage_path) if storage_path is not None else _default_storage_path()
+            )
             self.storage_path.mkdir(parents=True, exist_ok=True)
             self.client = QdrantClient(path=str(self.storage_path))
-        
+
         # Upgrade check: If collection exists but has no sparse vectors, delete it
         # so QdrantVectorStore can recreate it with BOTH dense and sparse vectors enabled.
         if self.client.collection_exists(collection_name=self.collection_name):
             collection_info = self.client.get_collection(collection_name=self.collection_name)
             # If sparse vectors config is missing or empty, migrate the collection
             from typing import Any
+
             config_any: Any = collection_info.config
             if not getattr(config_any, "sparse_vectors_config", None):
                 self.client.delete_collection(collection_name=self.collection_name)
-        
+
         self.vector_store = QdrantVectorStore(
             client=self.client,
             collection_name=self.collection_name,

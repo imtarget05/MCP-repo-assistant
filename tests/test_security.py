@@ -1,6 +1,5 @@
-import os
-import time
 from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from src.api.app import app
@@ -25,7 +24,7 @@ def test_api_key_authentication():
     # Patch API_SECRET_KEY to verify authentication
     with patch("src.api.app._API_SECRET_KEY", "super-secret-key-123"):
         client = TestClient(app)
-        
+
         # 1. Reject without key
         response = client.post("/ingest", json={"repo_path": None})
         assert response.status_code == 403
@@ -54,20 +53,22 @@ def test_api_key_authentication():
 def test_rate_limiting():
     # Make sure we trigger rate limiting using a lower threshold or custom IP
     client = TestClient(app)
-    
+
     # Custom limit to 5 just for test to be fast
     with patch("src.api.app._RATE_LIMIT_MAX", 5):
         # We need to clear store first to be clean
         with patch("src.api.app._rate_limit_store", {}):
             # Mock invoke_agent, RepoRetriever and ingest_repository to run instantly
             from unittest.mock import AsyncMock
-            with patch("src.api.app.invoke_agent", new_callable=AsyncMock) as mock_invoke, \
-                 patch("src.api.app.ingest_repository") as mock_ingest, \
-                 patch("src.api.app.RepoRetriever") as mock_retriever:
-                
+
+            with (
+                patch("src.api.app.invoke_agent", new_callable=AsyncMock) as mock_invoke,
+                patch("src.api.app.ingest_repository") as mock_ingest,
+                patch("src.api.app.RepoRetriever"),
+            ):
                 mock_invoke.return_value = "Test response"
                 mock_ingest.return_value = (None, [])
-                
+
                 # Send 5 requests -> OK
                 for _ in range(5):
                     response = client.post("/chat", json={"question": "Test", "reindex": False})
@@ -77,4 +78,3 @@ def test_rate_limiting():
                 response = client.post("/chat", json={"question": "Test", "reindex": False})
                 assert response.status_code == 429
                 assert "Too many requests" in response.json()["detail"]
-

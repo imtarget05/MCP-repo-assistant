@@ -1,16 +1,16 @@
-import asyncio
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.agent.task_orchestrator import TaskDecompositionEngine, ExecutionPlan, SubTask
-from src.agent.parallel_executor import ParallelExecutor, ExecutionStrategy
+import pytest
+
+from src.agent.parallel_executor import ExecutionStrategy, ParallelExecutor
+from src.agent.task_orchestrator import ExecutionPlan, SubTask, TaskDecompositionEngine
 
 
 class FakeLLM:
     def __init__(self, response_text: str):
         self.response_text = response_text
         self.ainvoke = AsyncMock()
-        
+
         # Thiết lập return value cho ainvoke
         mock_response = MagicMock()
         mock_response.content = response_text
@@ -20,27 +20,37 @@ class FakeLLM:
 @pytest.mark.asyncio
 async def test_task_decomposition_waves():
     # Mock LLM response với cấu trúc JSON hoàn chỉnh của ExecutionPlan
-    mock_json = """
-    {
-      "analysis": "Test phân tách tác vụ phức tạp.",
-      "subtasks": [
-        {"id": "task_1", "name": "Task 1", "description": "Lấy thông tin", "dependencies": [], "estimated_time": 5.0, "priority": "HIGH", "critical": true},
-        {"id": "task_2", "name": "Task 2", "description": "Tải file", "dependencies": ["task_1"], "estimated_time": 10.0, "priority": "MEDIUM", "critical": false},
-        {"id": "task_3", "name": "Task 3", "description": "Phân tích bảo mật", "dependencies": ["task_1"], "estimated_time": 15.0, "priority": "HIGH", "critical": true},
-        {"id": "task_4", "name": "Task 4", "description": "Tổng hợp kết quả", "dependencies": ["task_2", "task_3"], "estimated_time": 5.0, "priority": "MEDIUM", "critical": true}
-      ],
-      "total_estimated_time": 35.0
-    }
-    """
+    mock_json = (
+        "\n"
+        "    {\n"
+        '      "analysis": "Test phân tách tác vụ phức tạp.",\n'
+        '      "subtasks": [\n'
+        '        {"id": "task_1", "name": "Task 1", "description": "Lấy thông tin", '
+        '"dependencies": [], "estimated_time": 5.0, "priority": "HIGH", '
+        '"critical": true},\n'
+        '        {"id": "task_2", "name": "Task 2", "description": "Tải file", '
+        '"dependencies": ["task_1"], "estimated_time": 10.0, "priority": "MEDIUM", '
+        '"critical": false},\n'
+        '        {"id": "task_3", "name": "Task 3", "description": "Phân tích bảo mật", '
+        '"dependencies": ["task_1"], "estimated_time": 15.0, "priority": "HIGH", '
+        '"critical": true},\n'
+        '        {"id": "task_4", "name": "Task 4", "description": "Tổng hợp kết quả", '
+        '"dependencies": ["task_2", "task_3"], "estimated_time": 5.0, '
+        '"priority": "MEDIUM", "critical": true}\n'
+        "      ],\n"
+        '      "total_estimated_time": 35.0\n'
+        "    }\n"
+        "    "
+    )
     fake_llm = FakeLLM(mock_json)
     engine = TaskDecompositionEngine(llm_client=fake_llm)
 
     plan = await engine.decompose_request("Test request")
-    
+
     assert plan.analysis == "Test phân tách tác vụ phức tạp."
     assert len(plan.subtasks) == 4
     assert plan.total_estimated_time == 35.0
-    
+
     # Kiểm tra thuật toán Topological Sort phân wave
     # Wave 0 phải là task_1 (không có dependency)
     assert plan.execution_waves[0] == ["task_1"]
@@ -53,16 +63,20 @@ async def test_task_decomposition_waves():
 @pytest.mark.asyncio
 async def test_circular_dependency_error():
     # Đồ thị phụ thuộc vòng tròn: task_1 -> task_2 -> task_1
-    mock_json = """
-    {
-      "analysis": "Đồ thị lỗi vòng tròn.",
-      "subtasks": [
-        {"id": "task_1", "name": "Task 1", "description": "Lỗi", "dependencies": ["task_2"], "estimated_time": 5.0},
-        {"id": "task_2", "name": "Task 2", "description": "Lỗi", "dependencies": ["task_1"], "estimated_time": 5.0}
-      ],
-      "total_estimated_time": 10.0
-    }
-    """
+    mock_json = (
+        "\n"
+        "    {\n"
+        '      "analysis": "Đồ thị lỗi vòng tròn.",\n'
+        '      "subtasks": [\n'
+        '        {"id": "task_1", "name": "Task 1", "description": "Lỗi", '
+        '"dependencies": ["task_2"], "estimated_time": 5.0},\n'
+        '        {"id": "task_2", "name": "Task 2", "description": "Lỗi", '
+        '"dependencies": ["task_1"], "estimated_time": 5.0}\n'
+        "      ],\n"
+        '      "total_estimated_time": 10.0\n'
+        "    }\n"
+        "    "
+    )
     fake_llm = FakeLLM(mock_json)
     engine = TaskDecompositionEngine(llm_client=fake_llm)
 
@@ -78,11 +92,23 @@ async def test_parallel_executor_success():
     plan = ExecutionPlan(
         analysis="Thử nghiệm chạy song song.",
         subtasks=[
-            SubTask(id="task_1", name="Task 1", description="Chạy 1", dependencies=[], estimated_time=5.0),
-            SubTask(id="task_2", name="Task 2", description="Chạy 2", dependencies=["task_1"], estimated_time=5.0)
+            SubTask(
+                id="task_1",
+                name="Task 1",
+                description="Chạy 1",
+                dependencies=[],
+                estimated_time=5.0,
+            ),
+            SubTask(
+                id="task_2",
+                name="Task 2",
+                description="Chạy 2",
+                dependencies=["task_1"],
+                estimated_time=5.0,
+            ),
         ],
         total_estimated_time=10.0,
-        execution_waves=[["task_1"], ["task_2"]]
+        execution_waves=[["task_1"], ["task_2"]],
     )
 
     # Mock LLM cho Aggregator và Recovery
@@ -90,7 +116,7 @@ async def test_parallel_executor_success():
     executor = ParallelExecutor(
         max_concurrent_tasks=2,
         execution_strategy=ExecutionStrategy.SPEED_FIRST,
-        llm_client=fake_llm
+        llm_client=fake_llm,
     )
 
     # Hàm mock thực thi task con
@@ -99,6 +125,7 @@ async def test_parallel_executor_success():
 
     # Trình lắng nghe status callback
     status_events = []
+
     async def status_callback(event):
         status_events.append(event)
 
@@ -106,7 +133,7 @@ async def test_parallel_executor_success():
         execution_plan=plan,
         execution_func=mock_execute_func,
         status_callback=status_callback,
-        context={"user_request": "Chạy thử nghiệm song song"}
+        context={"user_request": "Chạy thử nghiệm song song"},
     )
 
     # Đảm bảo hoàn thành và tổng hợp đúng
@@ -114,13 +141,13 @@ async def test_parallel_executor_success():
     assert results["task_statuses"]["task_1"] == "COMPLETED"
     assert results["task_statuses"]["task_2"] == "COMPLETED"
     assert results["task_outputs"]["task_1"] == "Kết quả thành công từ task_1"
-    
+
     # Kiểm tra metrics
     metrics = results["metrics"]
     assert metrics["total_tasks"] == 2
     assert metrics["completed_tasks"] == 2
     assert metrics["failed_tasks"] == 0
-    
+
     # Kiểm tra các sự kiện SSE được kích hoạt đúng
     events = [e["event"] for e in status_events]
     assert "wave_start" in events

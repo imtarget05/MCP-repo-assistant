@@ -1,14 +1,15 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock
-from langchain_core.messages import AIMessage
-from langchain_core.documents import Document
 
 from src.api.app import app
 
 
 class FakeLLM:
-    def __init__(self, response_text: str = "This is a valid mock response with high quality content."):
+    def __init__(
+        self, response_text: str = "This is a valid mock response with high quality content."
+    ):
         self.response_text = response_text
         self.ainvoke = AsyncMock()
         mock_response = MagicMock()

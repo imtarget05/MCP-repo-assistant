@@ -19,12 +19,12 @@ class JsonFormatter(logging.Formatter):
     """Lightweight JSON log formatter – no extra dependencies required."""
 
     def format(self, record: logging.LogRecord) -> str:
-        import json
         import datetime
+        import json
 
         log_entry = {
             "timestamp": datetime.datetime.fromtimestamp(
-                record.created, tz=datetime.timezone.utc
+                record.created, tz=datetime.UTC
             ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
@@ -63,9 +63,7 @@ def get_logger(name: str) -> logging.Logger:
 class RequestIdMiddleware(BaseHTTPMiddleware):
     """Attach a unique X-Request-Id to every request/response for tracing."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         rid = request.headers.get("X-Request-Id") or uuid.uuid4().hex[:12]
         request_id_ctx.set(rid)
         response = await call_next(request)

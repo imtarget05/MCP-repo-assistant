@@ -1,6 +1,8 @@
+import asyncio
 import json
 import os
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -38,9 +40,6 @@ def _stringify_result(result: Any) -> str:
     return str(content)
 
 
-import asyncio
-from contextlib import asynccontextmanager
-
 class MCPClientManager:
     _instance = None
     _lock = asyncio.Lock()
@@ -63,15 +62,21 @@ class MCPClientManager:
             async with self._lock:
                 if self.session is None:
                     from contextlib import AsyncExitStack
+
                     self.exit_stack = AsyncExitStack()
                     server_params = StdioServerParameters(
                         command=sys.executable,
                         args=[_default_server_path()],
                     )
-                    read, write = await self.exit_stack.enter_async_context(stdio_client(server_params))
-                    self.session = await self.exit_stack.enter_async_context(ClientSession(read, write))
+                    read, write = await self.exit_stack.enter_async_context(
+                        stdio_client(server_params)
+                    )
+                    self.session = await self.exit_stack.enter_async_context(
+                        ClientSession(read, write)
+                    )
                     await self.session.initialize()
         yield self.session
+
 
 async def _call_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> str:
     manager = await MCPClientManager.get_instance()
@@ -107,7 +112,9 @@ async def summarize_architecture(repo_name: str):
 @tool("review_pull_request")
 async def review_pull_request(repo_name: str, pr_number: int):
     """Review code changes in a specific Pull Request."""
-    return await _call_mcp_tool("review_pull_request", {"repo_name": repo_name, "pr_number": pr_number})
+    return await _call_mcp_tool(
+        "review_pull_request", {"repo_name": repo_name, "pr_number": pr_number}
+    )
 
 
 @tool("create_github_issue")

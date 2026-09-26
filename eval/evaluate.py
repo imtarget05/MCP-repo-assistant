@@ -1,14 +1,13 @@
-import json
 import asyncio
+import json
 from pathlib import Path
 
-from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_precision, context_recall
 from datasets import Dataset
+from ragas import evaluate
+from ragas.metrics import answer_relevancy, context_precision, context_recall, faithfulness
 
 from src.agent.assistant import invoke_agent
 from src.rag.ingest import ingest_repository
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -32,6 +31,7 @@ def _build_prompt(question: str, contexts: list[str]) -> str:
         f"{context_block}\n\nQuestion: {question}"
     )
 
+
 async def run_eval():
     questions_path = PROJECT_ROOT / "eval" / "questions.jsonl"
     questions = _load_questions(questions_path)
@@ -51,7 +51,9 @@ async def run_eval():
         retrieved_docs = retriever.search(question, k=5)
         contexts = [doc.page_content for doc in retrieved_docs]
         answer = await invoke_agent(_build_prompt(question, contexts))
-        ground_truth = question_row.get("expected_behavior") or question_row.get("expected_file") or ""
+        ground_truth = (
+            question_row.get("expected_behavior") or question_row.get("expected_file") or ""
+        )
 
         data["question"].append(question)
         data["answer"].append(answer)
@@ -60,7 +62,7 @@ async def run_eval():
         data["ground_truths"].append([ground_truth] if ground_truth else [])
 
     dataset = Dataset.from_dict(data)
-    
+
     # Run evaluation
     result = evaluate(
         dataset,
@@ -71,14 +73,16 @@ async def run_eval():
             context_recall,
         ],
     )
-    
+
     print("Evaluation Results:")
     print(result)
-    
+
     # Save results
     from typing import Any
+
     result_any: Any = result
     result_any.to_pandas().to_csv(PROJECT_ROOT / "eval" / "results.csv", index=False)
+
 
 if __name__ == "__main__":
     asyncio.run(run_eval())
